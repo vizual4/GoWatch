@@ -7,5 +7,14 @@ type Monitor struct {
 	Name        string    `json:"name"`
 	URL         string    `json:"url"`
 	IntervalSec int       `json:"interval"`
-	CreatedAt   time.Time `json:"omitempty"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+}
+
+type CheckResult struct {
+	ID             int64
+	MonitorID      int64
+	StatusCode     int
+	ResponseTimeMs int
+	ErrorMsg       *string
+	CheckedAt      time.Time
 }

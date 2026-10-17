@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-func NewServer(logger *log.Logger) *http.Server {
+func NewServer(logger *log.Logger, h *handler.MonitorHandler) *http.Server {
 	mux := http.NewServeMux()
-	handler.Init(mux)
+	h.RegisterRoutes(mux)
 
 	port := os.Getenv("GOWATCH_PORT")
 	if len(port) == 0 {
@@ -20,9 +20,9 @@ func NewServer(logger *log.Logger) *http.Server {
 		Addr:         ":" + port,
 		Handler:      mux,
 		ErrorLog:     logger,
-		ReadTimeout:  10 * time.Millisecond,
-		WriteTimeout: 10 * time.Millisecond,
-		IdleTimeout:  10 * time.Millisecond,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  10 * time.Second,
 	}
 
 	return &server
