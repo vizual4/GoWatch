@@ -8,20 +8,35 @@ import (
 	"time"
 )
 
-func CreateMon(data *domain.Monitor) (int64, error) {
-	err := check(data)
-	if err != nil {
-		return 0, err
+type MonitorService struct {
+	repo repository.PostgresRepository
+}
+
+func NewMonitorService(repo repository.PostgresRepository) *MonitorService {
+	return &MonitorService{
+		repo: repo,
+	}
+}
+
+func (s *MonitorService) CreateMon(data *domain.Monitor) error {
+	if err := check(data); err != nil {
+		return err
 	}
 
 	data.CreatedAt = time.Now()
+	return s.repo.Create(data)
+}
 
-	err = repository.Create(data)
-	if err != nil {
-		return 0, err
-	}
+func (s *MonitorService) AllMons() ([]*domain.Monitor, error) {
+	return s.repo.GetAllMon()
+}
 
-	return data.ID, nil
+func (s *MonitorService) GetMon(id int64) (*domain.Monitor, error) {
+	return s.repo.GetMon(id)
+}
+
+func (s *MonitorService) DelMon(id int64) error {
+	return s.repo.DelMon(id)
 }
 
 func check(data *domain.Monitor) error {
