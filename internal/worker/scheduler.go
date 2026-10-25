@@ -13,11 +13,11 @@ type Scheduler struct {
 	interval time.Duration
 }
 
-func NewScheduler(repo repository.PostgresRepository, work *WorkerPool, t time.Duration) *Scheduler {
+func NewScheduler(repo repository.PostgresRepository, work *WorkerPool) *Scheduler {
 	return &Scheduler{
 		repo:     repo,
 		work:     work,
-		interval: t,
+		interval: 1 * time.Second,
 	}
 }
 
@@ -31,14 +31,14 @@ func (s *Scheduler) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 
-			res, err := s.repo.GetAllMon()
+			res, err := s.repo.GetDueMonitors(ctx)
 			if err != nil {
 				log.Printf("Scheduler can't get monitors, error: %v", err)
 				continue
 			}
 
-			for _, v := range res {
-				s.work.AddJob(*v)
+			for _, monitor := range res {
+				s.work.AddJob(*monitor)
 			}
 		}
 	}

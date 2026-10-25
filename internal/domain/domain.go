@@ -8,6 +8,7 @@ type Monitor struct {
 	URL         string    `json:"url"`
 	IntervalSec int       `json:"interval"`
 	CreatedAt   time.Time `json:"created_at,omitempty"`
+	NextCheckAt time.Time `json:"next_check_at,omitempty"`
 }
 
 type CheckResult struct {

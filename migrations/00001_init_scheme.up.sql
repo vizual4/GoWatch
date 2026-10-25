@@ -5,8 +5,11 @@ CREATE TABLE IF NOT EXISTS monitors (
     name VARCHAR(100) NOT NULL,
     url TEXT NOT NULL,
     interval_sec INT NOT NULL DEFAULT 60,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    next_check_at TIMESTAMPTZ NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_next_check ON monitors(next_check_at);
 
 CREATE TABLE IF NOT EXISTS checks (
     id SERIAL PRIMARY KEY,

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -18,19 +19,79 @@ type PostgresRepository interface {
 	GetAllMon() ([]*domain.Monitor, error)
 	DelMon(int64) error
 	GetMon(int64) (*domain.Monitor, error)
+	GetDueMonitors(ctx context.Context) ([]*domain.Monitor, error)
+	Close() error
 }
 
 type PostRepo struct {
 	db *sql.DB
 }
 
-func (r *PostRepo) SaveCheck(ctx context.Context, check domain.CheckResult) error {
-	query := `INSERT INTO checks (monitor_id, status_code, response_time_ms, error_msg, checked_at)
+func (r *PostRepo) SaveAndUpdate(ctx context.Context, check domain.CheckResult) error {
+	queryInsert := `INSERT INTO checks (monitor_id, status_code, response_time_ms, error_msg, checked_at)
 	VALUES ($1, $2, $3, $4, $5)
 	RETURNING id`
 
-	return r.db.QueryRow(query, check.MonitorID, check.StatusCode, check.ResponseTimeMs, check.ErrorMsg,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err // Возможно стоит заменить ошибку БД на свою
+	}
+
+	defer tx.Rollback()
+
+	err = tx.QueryRowContext(ctx, queryInsert, check.MonitorID, check.StatusCode, check.ResponseTimeMs, check.ErrorMsg,
 		check.CheckedAt).Scan(&check.ID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (r *PostRepo) GetDueMonitors(ctx context.Context) ([]*domain.Monitor, error) {
+	res := make([]*domain.Monitor, 0)
+
+	query := `WITH due AS (
+	SELECT id FROM monitors
+	WHERE next_check_at <= NOW()
+	FOR UPDATE SKIP LOCKED)
+	UPDATE monitors m SET next_check_at = NOW() + (m.interval_sec|| ' seconds')::interval
+	FROM due WHERE m.id = due.id
+	RETURNING m.id, m.name, m.url, m.interval_sec, m.created_at, m.next_check_at
+	`
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var info domain.Monitor
+
+		err = rows.Scan(&info.ID, &info.Name, &info.URL, &info.IntervalSec, &info.CreatedAt, &info.NextCheckAt)
+		if err != nil {
+			log.Printf("scanning error: %v", err)
+			return nil, fmt.Errorf("internal error")
+		}
+
+		res = append(res, &info)
+	}
+
+	if rows.Err() != nil {
+		log.Println(rows.Err())
+		return nil, fmt.Errorf("internal error")
+	}
+
+	return res, tx.Commit()
 }
 
 func NewPostgresRepo(dsn string) (*PostRepo, error) {
@@ -49,13 +110,18 @@ func NewPostgresRepo(dsn string) (*PostRepo, error) {
 	return &PostRepo{db: db}, nil
 }
 
+func (r *PostRepo) Close() error {
+	return r.db.Close()
+}
+
 func (r *PostRepo) Create(data *domain.Monitor) error {
-	query := `INSERT INTO monitors (name, url, interval_sec)
-	VALUES ($1, $2, $3)
+	query := `INSERT INTO monitors (name, url, interval_sec, next_check_at)
+	VALUES ($1, $2, $3, $4)
 	RETURNING id, created_at
 	`
 
-	return r.db.QueryRow(query, data.Name, data.URL, data.IntervalSec).Scan(&data.ID, &data.CreatedAt)
+	return r.db.QueryRow(query, data.Name, data.URL, data.IntervalSec,
+		time.Now().Add(time.Duration(data.IntervalSec)*time.Second)).Scan(&data.ID, &data.CreatedAt)
 }
 
 func (r *PostRepo) GetAllMon() ([]*domain.Monitor, error) {
@@ -76,14 +142,14 @@ func (r *PostRepo) GetAllMon() ([]*domain.Monitor, error) {
 
 		err := rows.Scan(&monitor.ID, &monitor.Name, &monitor.URL, &monitor.IntervalSec, &monitor.CreatedAt)
 		if err != nil {
-			log.Println("scanning error")
+			log.Printf("scanning error: %v", err)
 			return nil, fmt.Errorf("internal error")
 		}
 		res = append(res, &monitor)
 	}
 
 	if rows.Err() != nil {
-		log.Println(err)
+		log.Println(rows.Err())
 		return nil, fmt.Errorf("internal error")
 	}
 
