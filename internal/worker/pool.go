@@ -9,7 +9,7 @@ import (
 )
 
 type CheckRepo interface {
-	SaveCheck(ctx context.Context, check domain.CheckResult) error
+	SaveAndUpdate(ctx context.Context, check domain.CheckResult) error
 }
 
 type WorkerPool struct {
@@ -81,7 +81,7 @@ func (w *WorkerPool) process(ctx context.Context, monitor domain.Monitor, id int
 	}
 
 	if w.repo != nil {
-		err = w.repo.SaveCheck(ctx, res)
+		err = w.repo.SaveAndUpdate(ctx, res)
 		if err != nil {
 			log.Printf("worker %d error save check in DB for monitor %d: %v", id, monitor.ID, err)
 		}
